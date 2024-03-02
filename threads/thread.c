@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+//sleep list
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -63,7 +66,8 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-/* Returns true if T appears to point to a valid thread. */
+/* Returns true if T appears to point to a valid thread.
+	t가 유효한 스레드를 가리키면 true반환 */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
 /* Returns the running thread.
@@ -92,9 +96,12 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
    It is not safe to call thread_current() until this function
    finishes. */
+
+// 스레드 시스템을 초기화. 
+// 주요 목적은 핀토스의 초기 스레드를 위한 구조체 스레드를 생성하는 것.
 void
 thread_init (void) {
-	ASSERT (intr_get_level () == INTR_OFF);
+	ASSERT (intr_get_level () == INTR_OFF); 	//에러검출용(디버깅 모드에서 개발자가 오류가 생기면 치명적일 것이라는 곳에 심어놈)
 
 	/* Reload the temporal gdt for the kernel
 	 * This gdt does not include the user context.
@@ -103,11 +110,12 @@ thread_init (void) {
 		.size = sizeof (gdt) - 1,
 		.address = (uint64_t) gdt
 	};
-	lgdt (&gdt_ds);
+	lgdt (&gdt_ds);	//load gdt
 
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -117,8 +125,9 @@ thread_init (void) {
 	initial_thread->tid = allocate_tid ();
 }
 
-/* Starts preemptive thread scheduling by enabling interrupts.
-   Also creates the idle thread. */
+/* 스케줄러를 시작하기 위해 호출.
+   idle 스레드, 즉 다른 스레드가 준비되지 않았을 때 예약되는 스레드를 생성한다.
+   그런 다음 인터럽트를 활성화하고, 부수적으로 타이머 인터럽트에서 돌아올 때 스케줄러가 intr_yield_on_return()을 사용하여 실행되므로 스케줄러 활성화됨*/
 void
 thread_start (void) {
 	/* Create the idle thread. */
@@ -127,14 +136,15 @@ thread_start (void) {
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
 
 	/* Start preemptive thread scheduling. */
+	//커널모드로 진입하기 위해서 인터럽트 플래그를 변경한다.
 	intr_enable ();
 
 	/* Wait for the idle thread to initialize idle_thread. */
 	sema_down (&idle_started);
 }
 
-/* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
+/* 각 타이머 틱마다 타이머 인터럽트 핸들러에 의해 호출된다.
+   따라서 이 함수는 외부 인터럽트 컨텍스트에서 실행된다. */
 void
 thread_tick (void) {
 	struct thread *t = thread_current ();
@@ -150,11 +160,11 @@ thread_tick (void) {
 		kernel_ticks++;
 
 	/* Enforce preemption. */
-	if (++thread_ticks >= TIME_SLICE)
-		intr_yield_on_return ();
+	if (++thread_ticks >= TIME_SLICE)	//스레드가 실행되는 시간이 time slice보다 길어지면 
+		intr_yield_on_return ();	//다음 인터럽트 처리 과정에서 스케줄링 이루어지도록 함
 }
 
-/* Prints thread statistics. */
+/* 핀토스 종료 시 호출되어 스레드 통계를 출력한다. */
 void
 thread_print_stats (void) {
 	printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
@@ -232,17 +242,18 @@ thread_block (void) {
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+//블록되어있던 스레드를 언블록하고 준비 상태로 변경하는 함수
 void
 thread_unblock (struct thread *t) {
-	enum intr_level old_level;
+	enum intr_level old_level;	//인터럽트 비활성화
 
 	ASSERT (is_thread (t));
 
-	old_level = intr_disable ();
+	old_level = intr_disable ();	//스레드가 이미 블록상태인지 확인
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
-	t->status = THREAD_READY;
-	intr_set_level (old_level);
+	list_push_back (&ready_list, &t->elem);	//준비리스트에 해당 스레드 추가
+	t->status = THREAD_READY;	//준비 상태로 변경
+	intr_set_level (old_level);	//인터럽트를 이전 상태로 복원
 }
 
 /* Returns the name of the running thread. */
@@ -279,7 +290,7 @@ thread_tid (void) {
    returns to the caller. */
 void
 thread_exit (void) {
-	ASSERT (!intr_context ());
+	ASSERT (!intr_context ());	//만약 현재 코드가 인터럽트 컨텍스트에서 실행 중이라면 ASSERT 실패하고 프로그램 종료
 
 #ifdef USERPROG
 	process_exit ();
@@ -287,34 +298,39 @@ thread_exit (void) {
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
-	intr_disable ();
-	do_schedule (THREAD_DYING);
+	intr_disable ();	//현재 인터럽트 비활성화 -> 유저 모드로 전환
+	do_schedule (THREAD_DYING);	//스레드 스케줄러에 스레드의 종료 상태를 알려줌
 	NOT_REACHED ();
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
-   may be scheduled again immediately at the scheduler's whim. */
+   may be scheduled again immediately at the scheduler's whim.
+   CPU를 반환한다. 현재 스레드는 절전모드로 전환되지 않고 스케줄러의 변덕에 따라
+   즉시 다시 스케줄링될 수 있다.
+ */
 void
 thread_yield (void) {
-	struct thread *curr = thread_current ();
+	struct thread *curr = thread_current ();	//현재 스레드 포인터 반환환다.
 	enum intr_level old_level;
 
 	ASSERT (!intr_context ());
 
-	old_level = intr_disable ();
+	old_level = intr_disable ();	//인터럽트를 비활성화하고 이전 인터럽트 상태로 돌아간다.
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
-	intr_set_level (old_level);
+		list_push_back (&ready_list, &curr->elem);	//주어진 항목을 ready_list의 마지막에 삽입
+	do_schedule (THREAD_READY);	//contenxt switching
+	intr_set_level (old_level);	//인터럽트 상태를 old_level 상태로 설정하고, 이전 인터럽트 상태 반환
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY.
+	현재 스레드의 우선순위를 새 우선순위로 설정 */
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
 }
 
-/* Returns the current thread's priority. */
+/* Returns the current thread's priority. 
+	현재 스레드의 우선순위를 반환*/
 int
 thread_get_priority (void) {
 	return thread_current ()->priority;
@@ -404,8 +420,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (name != NULL);
 
 	memset (t, 0, sizeof *t);
-	t->status = THREAD_BLOCKED;
-	strlcpy (t->name, name, sizeof t->name);
+	t->status = THREAD_BLOCKED;	//대기상태여야 하기 때문 (아직 실행x)
+	strlcpy (t->name, name, sizeof t->name);	//버퍼 오버플로우 방지 , 문자열 복사 함수
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
@@ -424,7 +440,8 @@ next_thread_to_run (void) {
 		return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
-/* Use iretq to launch the thread */
+/* Use iretq to launch the thread
+   다른 스레드가 실행되기 시작한다.  */
 void
 do_iret (struct intr_frame *tf) {
 	__asm __volatile(
@@ -577,14 +594,16 @@ schedule (void) {
 }
 
 /* Returns a tid to use for a new thread. */
+// 멀티 스레드 환경에서 동시에 여러 스레드가 식별자를 요청할 때 충돌이 발생하지 않도록 임계구역 설정하고 락 사용하여 동기화
+// 스레드 식별자의 중복 할당을 방지하고 고유한 값 보장
 static tid_t
 allocate_tid (void) {
-	static tid_t next_tid = 1;
+	static tid_t next_tid = 1;	//다음에 할당할 스레드 식별자 저장 1로 초기화
 	tid_t tid;
 
-	lock_acquire (&tid_lock);
+	lock_acquire (&tid_lock);	//스레드 식별자 할당에 대한 임계영역을 설정하기 위해 락 획득
 	tid = next_tid++;
-	lock_release (&tid_lock);
+	lock_release (&tid_lock);	//임계영역 빠져나오기 위해 락 해제
 
 	return tid;
 }

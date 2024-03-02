@@ -17,7 +17,8 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
-/* Number of timer ticks since OS booted. */
+/* Number of timer ticks since OS booted.
+OS 부팅 이후 타이머 틱 횟수 */
 static int64_t ticks;
 
 /* Number of loops per timer tick.
@@ -90,11 +91,11 @@ timer_elapsed (int64_t then) {
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	int64_t start = timer_ticks ();	//현재 시간 기록
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	ASSERT (intr_get_level () == INTR_ON);	
+	// while (timer_elapsed (start) < ticks)	//경과 시간이 틱보다 작은지 시간 확인 
+	// 	thread_yield ();	//cpu를 산출하고 ready_list에 스레드 삽입
 }
 
 /* Suspends execution for approximately MS milliseconds. */
