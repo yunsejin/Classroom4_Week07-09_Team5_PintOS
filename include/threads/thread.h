@@ -92,9 +92,12 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
-	/* Shared between thread.c and synch.c. */
-	struct list_elem elem;              /* List element. */
+	//local tick
+	int64_t wakeup_tick;
 
+	/* Shared between thread.c and synch.c. */
+	// 스레드를 이중 연결 목록 ready_list(실행 준비가 된 스레드 목록) 또는 세마포어를 기다리는 스레드 목록에 넣는데 사용되는 "목록 요소"
+	struct list_elem elem;              
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -105,8 +108,8 @@ struct thread {
 #endif
 
 	/* Owned by thread.c. */
-	struct intr_frame tf;               /* Information for switching */
-	unsigned magic;                     /* Detects stack overflow. */
+	struct intr_frame tf;               /* 레지스터 및 스택 포인터를 포함하는 컨텍스트 전환을 위한 정보 저장 */
+	unsigned magic;                     /* 스택 오버플로우 감지 */
 };
 
 /* If false (default), use round-robin scheduler.
@@ -132,6 +135,9 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+
+void thread_sleep(int64_t);
+void thread_wakeup(int64_t);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
