@@ -332,12 +332,13 @@ thread_sleep(int64_t ticks){
 	ASSERT(!intr_context());
 
 	old_level = intr_disable();
+	curr->status = THREAD_BLOCKED;
 	curr->wakeup_tick = ticks;
+	
 	if(curr!= idle_thread)
-		// list_push_back(&sleep_list, &curr->elem);
 		list_insert_ordered(&sleep_list, &curr->elem,(list_less_func *) &sleep_less , NULL);
-		
-	thread_block();
+
+	schedule();
 	intr_set_level(old_level);
 }
 
@@ -351,18 +352,18 @@ sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSE
 void
 thread_wakeup(int64_t ticks)
 {
-	struct thread *curr;
-	struct thread *wake_thread;
+	if(list_empty(&sleep_list))
+		return;
 
-	if(!list_empty(&sleep_list))
+	enum intr_level old_level;
+	struct thread *wake_thread = list_entry(list_begin(&sleep_list),struct thread, elem);
+	while(wake_thread->wakeup_tick <= ticks)
 	{
-		curr = list_front(&sleep_list);
-	
-		if(curr->wakeup_tick <= ticks)
-		{
-			wake_thread = list_pop_front(&sleep_list);
-			list_push_back(&ready_list, wake_thread);
-		}
+		old_level = intr_disable();
+		wake_thread->status = THREAD_READY;
+		list_push_back(&ready_list, list_pop_front(&sleep_list));
+		wake_thread = list_entry(list_begin(&sleep_list),struct thread, elem);
+		intr_set_level(old_level);
 	}
 }
 
@@ -603,7 +604,7 @@ static void
 schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
-
+	// printf("next %p ", &next);
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
 	ASSERT (is_thread (next));
