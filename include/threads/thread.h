@@ -92,6 +92,9 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+	//local tick
+	int64_t wakeup_tick;
+
 	/* Shared between thread.c and synch.c. */
 	// 스레드를 이중 연결 목록 ready_list(실행 준비가 된 스레드 목록) 또는 세마포어를 기다리는 스레드 목록에 넣는데 사용되는 "목록 요소"
 	struct list_elem elem;              
@@ -132,6 +135,9 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+
+void thread_sleep(int64_t);
+void thread_wakeup(int64_t);
 
 int thread_get_priority (void);
 void thread_set_priority (int);

@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include <list.h>
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -56,6 +57,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+bool sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -151,13 +153,13 @@ thread_tick (void) {
 
 	/* Update statistics. */
 	if (t == idle_thread)
-		idle_ticks++;
+		idle_ticks++;	//시스템이 얼마나 자유롭게 idle 상태에 있었는지 
 #ifdef USERPROG
 	else if (t->pml4 != NULL)
 		user_ticks++;
 #endif
 	else
-		kernel_ticks++;
+		kernel_ticks++;	//시스템이 커널 내에서 작업을 수행한 시간 , 시스템의 성능 분석이나 디버깅에 유용
 
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)	//스레드가 실행되는 시간이 time slice보다 길어지면 
@@ -320,6 +322,48 @@ thread_yield (void) {
 		list_push_back (&ready_list, &curr->elem);	//주어진 항목을 ready_list의 마지막에 삽입
 	do_schedule (THREAD_READY);	//contenxt switching
 	intr_set_level (old_level);	//인터럽트 상태를 old_level 상태로 설정하고, 이전 인터럽트 상태 반환
+}
+
+void
+thread_sleep(int64_t ticks){
+	struct thread *curr = thread_current();
+	enum intr_level old_level;
+
+	ASSERT(!intr_context());
+
+	old_level = intr_disable();
+	curr->wakeup_tick = ticks;
+	if(curr!= idle_thread)
+		// list_push_back(&sleep_list, &curr->elem);
+		list_insert_ordered(&sleep_list, &curr->elem,(list_less_func *) &sleep_less , NULL);
+		
+	thread_block();
+	intr_set_level(old_level);
+}
+
+bool
+sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, elem);
+	struct thread *tb = list_entry(b, struct thread, elem);
+	return ta->wakeup_tick < tb->wakeup_tick;
+}
+
+void
+thread_wakeup(int64_t ticks)
+{
+	struct thread *curr;
+	struct thread *wake_thread;
+
+	if(!list_empty(&sleep_list))
+	{
+		curr = list_front(&sleep_list);
+	
+		if(curr->wakeup_tick <= ticks)
+		{
+			wake_thread = list_pop_front(&sleep_list);
+			list_push_back(&ready_list, wake_thread);
+		}
+	}
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY.
