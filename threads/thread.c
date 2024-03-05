@@ -34,7 +34,16 @@
 /* 스레드_준비 상태의 프로세스 목록, 즉 실행할 준비가 되었지만 실제로는 실행되지 않는 프로세스
    실행할 준비가 되었지만 실제로 실행되지는 않은 프로세스 목록입니다. */
 static struct list ready_list;
+<<<<<<< HEAD
 static struct list sleep_list;
+=======
+
+/* sleep list */
+static struct list sleep_list;
+
+static struct list greater_list;
+
+>>>>>>> c4c60b426e41d7f392283dcc67c120884e7001f7
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -63,7 +72,12 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    true이면 다단계 피드백 대기열 스케줄러를 사용합니다.
    커널 명령줄 옵션 "-o mlfqs"로 제어합니다. */
 bool thread_mlfqs;
+<<<<<<< HEAD
 
+=======
+bool sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool priorty_greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+>>>>>>> c4c60b426e41d7f392283dcc67c120884e7001f7
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -115,6 +129,7 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
    일반적으로는 작동하지 않으며, 이 경우에만 가능한 이유는 loader.S
    가 스택의 맨 아래를 페이지 경계에 배치하도록 주의했기 때문에 가능합니다.
 
+<<<<<<< HEAD
    또한 실행 대기열과 티드 잠금을 초기화합니다.
 
    이 함수를 호출한 후에는 페이지 생성 전에 페이지
@@ -123,6 +138,10 @@ static uint64_t gdt[3] = { 0, 0x00af9a000000ffff, 0x00cf92000000ffff };
 
    이 함수가 완료될 때까지 thread_current()를 호출하는 것은 안전하지 않습니다.
    를 호출하는 것은 안전하지 않습니다. */
+=======
+/* 스레드 시스템을 초기화. 
+   주요 목적은 핀토스의 초기 스레드를 위한 구조체 스레드를 생성하는 것. */
+>>>>>>> c4c60b426e41d7f392283dcc67c120884e7001f7
 void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
@@ -140,6 +159,7 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&sleep_list);
+	list_init (&greater_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -149,10 +169,15 @@ thread_init (void) {
 	initial_thread->tid = allocate_tid ();
 }
 
+<<<<<<< HEAD
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 /* 인터럽트를 활성화하여 선제적 스레드 스케줄링을 시작합니다.
    또한 유휴 스레드를 생성합니다. */
+=======
+/* 스케줄러를 시작하기 위해 호출.
+   idle 스레드, 즉 다른 스레드가 준비되지 않았을 때 예약되는 스레드를 생성한다.*/
+>>>>>>> c4c60b426e41d7f392283dcc67c120884e7001f7
 void
 thread_start (void) {
 	/* Create the idle thread. */
@@ -161,7 +186,11 @@ thread_start (void) {
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
 
 	/* Start preemptive thread scheduling. */
+<<<<<<< HEAD
 	intr_enable ();
+=======
+	intr_enable (); 	//커널모드로 진입하기 위해서 인터럽트 플래그를 변경한다.
+>>>>>>> c4c60b426e41d7f392283dcc67c120884e7001f7
 
 	/* Wait for the idle thread to initialize idle_thread. */
 	sema_down (&idle_started);
@@ -373,15 +402,93 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
+<<<<<<< HEAD
 	list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
+=======
+		list_push_back (&ready_list, &curr->elem);
+	do_schedule (THREAD_READY);	//contenxt switching
+	intr_set_level (old_level);	
+}
+
+void
+thread_sleep(int64_t ticks){
+	struct thread *curr = thread_current();
+	enum intr_level old_level;
+
+	ASSERT(!intr_context());
+
+	old_level = intr_disable();
+	curr->status = THREAD_BLOCKED;
+	curr->wakeup_tick = ticks;
+	
+	if(curr!= idle_thread)
+		list_insert_ordered(&sleep_list, &curr->elem,(list_less_func *) &sleep_less , NULL);	//오름차순으로 정렬
+	schedule();
+	intr_set_level(old_level);
+}
+
+void
+thread_wakeup(int64_t ticks)
+{
+	if(list_empty(&sleep_list))
+		return;
+
+	enum intr_level old_level;
+	
+	//sleep_list의 시작 지점에 대한 iterator를 반환하여 해당 요소를 struct thread로 캐스팅
+	struct thread *sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);
+
+	//alarm-priority
+	struct thread *sleep_pop_front_thread;
+
+	while(sleep_front_thread->wakeup_tick <= ticks)
+	{
+		old_level = intr_disable();
+		sleep_front_thread->status = THREAD_READY;
+		
+		sleep_pop_front_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
+		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , (list_less_func *) &priorty_greater, NULL);
+		
+		// list_push_back(&ready_list, list_pop_front(&sleep_list));
+		sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);	
+		intr_set_level(old_level);
+	}
+
+	while(!list_empty(&greater_list))
+	{
+		old_level = intr_disable();
+		list_push_back(&ready_list, list_pop_front(&greater_list));
+		intr_set_level(old_level);
+	}
+}
+
+bool
+sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, elem);
+	struct thread *tb = list_entry(b, struct thread, elem);
+	return ta->wakeup_tick < tb->wakeup_tick;
+}
+
+bool
+priorty_greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, elem);
+	struct thread *tb = list_entry(b, struct thread, elem);
+	return ta->priority > tb->priority;
+}
+
+/* Sets the current thread's priority to NEW_PRIORITY.
+	현재 스레드의 우선순위를 새 우선순위로 설정 */
+>>>>>>> c4c60b426e41d7f392283dcc67c120884e7001f7
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	
+	// int old_priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
