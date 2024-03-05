@@ -60,7 +60,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 bool sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-
+bool priorty_greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -390,7 +390,6 @@ priorty_greater(const struct list_elem *a, const struct list_elem *b, void *aux 
 	struct thread *tb = list_entry(b, struct thread, elem);
 	return ta->priority > tb->priority;
 }
-
 
 /* Sets the current thread's priority to NEW_PRIORITY.
 	현재 스레드의 우선순위를 새 우선순위로 설정 */
