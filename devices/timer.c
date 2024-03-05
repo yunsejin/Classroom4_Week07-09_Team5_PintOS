@@ -104,7 +104,6 @@ timer_sleep (int64_t ticks) {
 	/* Alarm Clock */
 	if(timer_elapsed(start) < ticks)
 		thread_sleep(start + ticks);
-	
 }
 
 /* Suspends execution for approximately MS milliseconds. */
