@@ -100,6 +100,7 @@ timer_sleep (int64_t ticks) {
 	// 	thread_yield ();	//cpu를 산출하고 ready_list에 스레드 삽입
 	if(timer_elapsed(start) < ticks)
 		thread_sleep(start + ticks);
+	
 }
 
 /* Suspends execution for approximately MS milliseconds. */
