@@ -330,7 +330,7 @@ thread_yield (void) {
 	old_level = intr_disable ();
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
-		//list_push_back (&ready_list, &curr->elem);
+
 	do_schedule (THREAD_READY);	//contenxt switching
 	intr_set_level (old_level);	
 }
@@ -373,7 +373,6 @@ thread_wakeup(int64_t ticks)
 		sleep_pop_front_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
 		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , cmp_priority, NULL);
 		
-		// list_push_back(&ready_list, list_pop_front(&sleep_list));
 		sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);	
 		intr_set_level(old_level);
 	}
@@ -397,6 +396,13 @@ bool
 cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	struct thread *ta = list_entry(a, struct thread, elem);
 	struct thread *tb = list_entry(b, struct thread, elem);
+	return ta->priority > tb->priority;
+}
+
+bool
+cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, d_elem);
+	struct thread *tb = list_entry(b, struct thread, d_elem);
 	return ta->priority > tb->priority;
 }
 
@@ -509,6 +515,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	t->original_priority = priority;
+	list_init(&t->donations);
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

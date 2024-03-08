@@ -196,6 +196,21 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	if(lock->holder != NULL)
+	{
+		//wait_on_lock에 현재 내가 필요로 하는 lock을 저장한다.
+		thread_current()->wait_on_lock = lock;
+		list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donor_priority, NULL);
+		//우선순위 기부
+		if(lock->holder->priority < thread_current()->priority)
+		{
+			lock->holder->priority = thread_current()->priority;
+		}
+	}
+	
+	if(thread_current()->wait_on_lock == lock)
+		
+	
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();	//현재 스레드에 대한 잠금 획득
 }
@@ -229,6 +244,12 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+	
+	struct thread *d_t = list_entry(list_begin(&lock->holder->donations), struct thread, d_elem);
+	if(lock->holder->priority < d_t->priority)
+		lock->holder->priority = d_t->priority;
+	
+	lock->holder->priority = thread_current()->original_priority;
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
