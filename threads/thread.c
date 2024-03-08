@@ -399,6 +399,7 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	return ta->priority > tb->priority;
 }
 
+//donations 리스트에 들어가는 d_elem을 priority 기준으로 정렬(내림차순)
 bool
 cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	struct thread *ta = list_entry(a, struct thread, d_elem);
@@ -410,13 +411,19 @@ cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *a
 	현재 스레드의 우선순위를 새 우선순위로 설정 , 현재 스레드가 더 이상 가장 높은 우선 순위를 갖지 않으면 yield*/
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	if(list_empty(&thread_current()->donations))
+	{
+		thread_current ()->priority = new_priority;
+	}
+	//만약 donations list가 비어있지 않다면
+	thread_current ()->original_priority = new_priority;
 
 	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	if(thread_current()->priority < head_thread->priority)	
 		thread_yield(); 
-	else
+	else	
 		list_sort(&ready_list, cmp_priority, NULL);
+
 }
 
 /* Returns the current thread's priority.     
@@ -518,9 +525,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	t->original_priority = priority;
 	list_init(&t->donations);
-	t->wait_on_lock = NULL;
 }
-
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
