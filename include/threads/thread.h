@@ -104,7 +104,6 @@ struct thread {
 	struct list donations;
 	struct list_elem d_elem;
 
-
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
