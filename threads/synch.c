@@ -114,14 +114,19 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
+
 	if (!list_empty (&sema->waiters))
+		//sema->waiters에 있는 맨 앞 쓰레드를 깨운다.
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 				struct thread, elem));	
-				
+
 	sema->value++;
 
-	thread_set_priority(thread_get_priority());
-	intr_set_level (old_level);
+	// thread_set_priority(thread_get_priority());
+	intr_set_level (old_level);	
+	
+	//cpu 양보
+	thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -200,18 +205,19 @@ lock_acquire (struct lock *lock) {
 	{
 		//wait_on_lock에 현재 내가 필요로 하는 lock을 저장한다.
 		thread_current()->wait_on_lock = lock;
-		list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, cmp_donor_priority, NULL);
+
 		//우선순위 기부
 		if(lock->holder->priority < thread_current()->priority)
-		{
+		{	
+			//현재 스레드를 donations 리스트에 삽입(우선순위순으로)
+			list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, &cmp_donor_priority, NULL);
 			lock->holder->priority = thread_current()->priority;
 		}
 	}
-	
-	if(thread_current()->wait_on_lock == lock)
-		
-	
+
 	sema_down (&lock->semaphore);
+	//락 획득 -> 현재 쓰레드의 wait_on_lock NULL로 설정
+	thread_current()->wait_on_lock = NULL;
 	lock->holder = thread_current ();	//현재 스레드에 대한 잠금 획득
 }
 
@@ -244,12 +250,36 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
-	
-	struct thread *d_t = list_entry(list_begin(&lock->holder->donations), struct thread, d_elem);
-	if(lock->holder->priority < d_t->priority)
-		lock->holder->priority = d_t->priority;
-	
-	lock->holder->priority = thread_current()->original_priority;
+
+	if(!list_empty(&lock->holder->donations))
+	{	
+		//탐색을 위한 현재 donations 리스트에서 맨 앞 요소 확인
+		struct list_elem *front_elem = list_begin(&lock->holder->donations);
+
+		//리스트 탐색
+		while(front_elem != list_end(&lock->holder->donations))
+		{
+			struct thread *front_thread = list_entry(front_elem, struct thread, d_elem);
+			
+			//해당 락 소유 쓰레드 찾기
+			if(front_thread->wait_on_lock == lock)
+			{
+				list_remove(&front_thread->d_elem);
+				front_thread->wait_on_lock = NULL;
+			}			
+			front_elem = list_next(front_elem);
+		}
+
+		//donations list가 비어있지 않다면 list에 있는 가장 큰 우선순위로 락 소유 스레드에게 기부 한다.
+		if(!list_empty(&lock->holder->donations))
+		{
+			struct thread *next_thread = list_entry(list_front(&lock->holder->donations), struct thread, d_elem);
+			lock->holder->priority = next_thread->priority;
+		}	
+		//비어있으면 원래의 우선순위로 복귀
+		else
+			lock->holder->priority = lock->holder->original_priority;
+	}
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
