@@ -200,41 +200,19 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
-
+	
 	if(lock->holder != NULL)
 	{
 		//wait_on_lock에 현재 내가 필요로 하는 lock을 저장한다.
 		thread_current()->wait_on_lock = lock;
-		
-		//반복문 while true
-		//종료조건 나의 priority보다 클 때
-		struct thread *front_td = thread_current()->wait_on_lock->holder;
-		// printf("%d \n", front_td->priority);
-		
-	
-		while(front_td != NULL)
-		{
-			if(front_td->priority < thread_current()->priority)
-			{
-				//현재 스레드를 donations 리스트에 삽입(우선순위순으로)
-				list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, &cmp_donor_priority, NULL);
-				// printf("before %d \n", front_td->priority);
-				front_td->priority = thread_current()->priority;
-				// printf("after %d \n", front_td->priority);
-				front_td = front_td->wait_on_lock->holder;
-			}
-			else
-				
-				break;
-		}
 
-		// // //우선순위 기부
-		// if(lock->holder->priority < thread_current()->priority)
-		// {	
-		// 	//현재 스레드를 donations 리스트에 삽입(우선순위순으로)
-		// 	list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, &cmp_donor_priority, NULL);
-		// 	lock->holder->priority = thread_current()->priority;
-		// }
+		//우선순위 기부
+		if(lock->holder->priority < thread_current()->priority)
+		{	
+			//현재 스레드를 donations 리스트에 삽입(우선순위순으로)
+			list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, &cmp_donor_priority, NULL);
+			lock->holder->priority = thread_current()->priority;
+		}
 	}
 
 	sema_down (&lock->semaphore);
@@ -302,7 +280,7 @@ lock_release (struct lock *lock) {
 		else
 			lock->holder->priority = lock->holder->original_priority;
 	}
-
+	
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
