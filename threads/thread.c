@@ -330,7 +330,7 @@ thread_yield (void) {
 	old_level = intr_disable ();
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
-		//list_push_back (&ready_list, &curr->elem);
+
 	do_schedule (THREAD_READY);	//contenxt switching
 	intr_set_level (old_level);	
 }
@@ -373,7 +373,6 @@ thread_wakeup(int64_t ticks)
 		sleep_pop_front_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
 		list_insert_ordered(&greater_list, &sleep_pop_front_thread->elem , cmp_priority, NULL);
 		
-		// list_push_back(&ready_list, list_pop_front(&sleep_list));
 		sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);	
 		intr_set_level(old_level);
 	}
@@ -400,17 +399,31 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 	return ta->priority > tb->priority;
 }
 
+//donations 리스트에 들어가는 d_elem을 priority 기준으로 정렬(내림차순)
+bool
+cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, d_elem);
+	struct thread *tb = list_entry(b, struct thread, d_elem);
+	return ta->priority > tb->priority;
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY.
 	현재 스레드의 우선순위를 새 우선순위로 설정 , 현재 스레드가 더 이상 가장 높은 우선 순위를 갖지 않으면 yield*/
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	if(list_empty(&thread_current()->donations))
+	{
+		thread_current ()->priority = new_priority;
+	}
+	//만약 donations list가 비어있지 않다면
+	thread_current ()->original_priority = new_priority;
 
 	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	if(thread_current()->priority < head_thread->priority)	
 		thread_yield(); 
-	else
+	else	
 		list_sort(&ready_list, cmp_priority, NULL);
+
 }
 
 /* Returns the current thread's priority.     
@@ -509,9 +522,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
-	t->original_priority = priority;
-}
 
+	t->original_priority = priority;
+	list_init(&t->donations);
+}
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
