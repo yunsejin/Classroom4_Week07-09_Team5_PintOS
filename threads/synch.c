@@ -129,6 +129,8 @@ sema_up (struct semaphore *sema) {
 	
 	//cpu 양보
 	thread_yield();
+
+	// thread_set_priority(thread_get_priority());
 }
 
 static void sema_test_helper (void *sema_);

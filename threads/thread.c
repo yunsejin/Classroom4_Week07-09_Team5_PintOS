@@ -400,8 +400,8 @@ thread_set_priority (int new_priority) {
 	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	if(thread_current()->priority < head_thread->priority)	
 		thread_yield(); 
-	else	
-		list_sort(&ready_list, cmp_priority, NULL);
+	// else	
+	// 	list_sort(&ready_list, cmp_priority, NULL);
 
 }
 
