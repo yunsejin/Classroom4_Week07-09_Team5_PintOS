@@ -359,10 +359,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-
-	//우선순위로 cond->waiters list에 넣어라
-	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_condvar_priority, NULL);
-
+	list_push_back(&cond->waiters, &waiter.elem);
 	lock_release (lock);
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
@@ -413,11 +410,14 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 //condition variable 우선순위 비교
 bool
 cmp_condvar_priority(const struct list_elem *a, const struct list_elem  *b, void *aux UNUSED) {
-	struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
-	struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
+	struct semaphore_elem *sema_elem_a = list_entry(a, struct semaphore_elem, elem);
+	struct semaphore_elem *sema_elem_b = list_entry(b, struct semaphore_elem, elem);
 
-	struct thread *t_a = list_entry(list_begin(&sema_a->semaphore.waiters), struct thread, elem);
-	struct thread *t_b = list_entry(list_begin(&sema_b->semaphore.waiters), struct thread, elem);
+	struct semaphore sema_a = sema_elem_a->semaphore;
+	struct semaphore sema_b = sema_elem_b->semaphore;
+
+	struct thread *t_a = list_entry(list_begin(&sema_a.waiters), struct thread, elem);
+	struct thread *t_b = list_entry(list_begin(&sema_b.waiters), struct thread, elem);
 	
 	return t_a->priority > t_b->priority;
 }
