@@ -328,18 +328,18 @@ thread_yield (void) {
 
 	ASSERT (!intr_context ());
 
-	old_level = intr_disable ();
+	old_level = intr_disable (); //인터럽트 비활성화, 유저 모드-> 커널 모드
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 
 	do_schedule (THREAD_READY);	//contenxt switching
-	intr_set_level (old_level);	
+	intr_set_level (old_level);	// 인터럽트 활성화, 커널 모드-> 유저 모드
 }
 
 void
 thread_sleep(int64_t ticks){
 	struct thread *curr = thread_current();
-	enum intr_level old_level;
+	enum intr_level old_level;	
 
 	ASSERT(!intr_context());
 
@@ -365,6 +365,7 @@ thread_wakeup(int64_t ticks)
 	struct thread *sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);
 	struct thread *sleep_pop_front_thread;
 
+	//깨어야하는 애들 중에서 우선순위가 높은 스레드를 greater_list에 삽입
 	while(sleep_front_thread->wakeup_tick <= ticks)
 	{
 		old_level = intr_disable();
@@ -400,8 +401,6 @@ thread_set_priority (int new_priority) {
 	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	if(thread_current()->priority < head_thread->priority)	
 		thread_yield(); 
-	else	
-		list_sort(&ready_list, cmp_priority, NULL);
 
 }
 
@@ -409,7 +408,6 @@ thread_set_priority (int new_priority) {
 	현재 스레드의 우선순위를 반환 , 우선 순위 기부가 있는 경우 더 높은 우선순위를 반환*/
 int
 thread_get_priority (void) {
-
 	return thread_current ()->priority;
 }
 
