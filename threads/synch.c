@@ -205,17 +205,26 @@ lock_acquire (struct lock *lock) {
 	{
 		//wait_on_lock에 현재 내가 필요로 하는 lock을 저장한다.
 		thread_current()->wait_on_lock = lock;
+		
+		//현재 스레드를 donations 리스트에 삽입(우선순위순으로)
+		list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, &cmp_donor_priority, NULL);
 
-		//우선순위 기부
-		if(lock->holder->priority < thread_current()->priority)
-		{	
-			//현재 스레드를 donations 리스트에 삽입(우선순위순으로)
-			list_insert_ordered(&lock->holder->donations, &thread_current()->d_elem, &cmp_donor_priority, NULL);
-			lock->holder->priority = thread_current()->priority;
+		struct lock *cur_wait_on_lock = thread_current()->wait_on_lock;
+		while(cur_wait_on_lock  != NULL)
+		{
+			if(cur_wait_on_lock->holder->priority< thread_current()->priority)
+			{
+				cur_wait_on_lock->holder->priority = thread_current()->priority;
+				cur_wait_on_lock = cur_wait_on_lock->holder->wait_on_lock;
+			}
+			else
+
+				break;
 		}
 	}
-
+	
 	sema_down (&lock->semaphore);
+
 	//락 획득 -> 현재 쓰레드의 wait_on_lock NULL로 설정
 	thread_current()->wait_on_lock = NULL;
 	lock->holder = thread_current ();	//현재 스레드에 대한 잠금 획득
