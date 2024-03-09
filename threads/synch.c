@@ -200,7 +200,7 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
-	
+
 	if(lock->holder != NULL)
 	{
 		//wait_on_lock에 현재 내가 필요로 하는 lock을 저장한다.
@@ -289,7 +289,7 @@ lock_release (struct lock *lock) {
 		else
 			lock->holder->priority = lock->holder->original_priority;
 	}
-	
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
