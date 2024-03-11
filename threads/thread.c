@@ -31,7 +31,7 @@ static struct list ready_list;
 
 /* sleep list */
 static struct list sleep_list;
-
+/* prioirty list */
 static struct list greater_list;
 
 /* Idle thread. */
@@ -310,7 +310,8 @@ thread_exit (void) {
 
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
-	intr_disable ();	//현재 인터럽트 비활성화 -> 유저 모드로 전환
+
+	intr_disable ();			//현재 인터럽트 비활성화 -> 유저 모드로 전환
 	do_schedule (THREAD_DYING);	//스레드 스케줄러에 스레드의 종료 상태를 알려줌
 	NOT_REACHED ();
 }
@@ -327,18 +328,18 @@ thread_yield (void) {
 
 	ASSERT (!intr_context ());
 
-	old_level = intr_disable ();
+	old_level = intr_disable (); //인터럽트 비활성화, 유저 모드-> 커널 모드
 	if (curr != idle_thread)
 		list_insert_ordered(&ready_list, &curr->elem, cmp_priority, NULL);
 
 	do_schedule (THREAD_READY);	//contenxt switching
-	intr_set_level (old_level);	
+	intr_set_level (old_level);	// 인터럽트 활성화, 커널 모드-> 유저 모드
 }
 
 void
 thread_sleep(int64_t ticks){
 	struct thread *curr = thread_current();
-	enum intr_level old_level;
+	enum intr_level old_level;	
 
 	ASSERT(!intr_context());
 
@@ -347,7 +348,7 @@ thread_sleep(int64_t ticks){
 	curr->wakeup_tick = ticks;
 	
 	if(curr!= idle_thread)
-		list_insert_ordered(&sleep_list, &curr->elem,(list_less_func *) &sleep_less , NULL);	//오름차순으로 정렬
+		list_insert_ordered(&sleep_list, &curr->elem, sleep_less , NULL);	//오름차순으로 정렬
 	schedule();
 	intr_set_level(old_level);
 }
@@ -364,6 +365,7 @@ thread_wakeup(int64_t ticks)
 	struct thread *sleep_front_thread = list_entry(list_begin(&sleep_list),struct thread, elem);
 	struct thread *sleep_pop_front_thread;
 
+	//깨어야하는 애들 중에서 우선순위가 높은 스레드를 greater_list에 삽입
 	while(sleep_front_thread->wakeup_tick <= ticks)
 	{
 		old_level = intr_disable();
@@ -385,28 +387,6 @@ thread_wakeup(int64_t ticks)
 	}
 }
 
-bool
-sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-	struct thread *ta = list_entry(a, struct thread, elem);
-	struct thread *tb = list_entry(b, struct thread, elem);
-	return ta->wakeup_tick < tb->wakeup_tick;
-}
-
-bool
-cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-	struct thread *ta = list_entry(a, struct thread, elem);
-	struct thread *tb = list_entry(b, struct thread, elem);
-	return ta->priority > tb->priority;
-}
-
-//donations 리스트에 들어가는 d_elem을 priority 기준으로 정렬(내림차순)
-bool
-cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-	struct thread *ta = list_entry(a, struct thread, d_elem);
-	struct thread *tb = list_entry(b, struct thread, d_elem);
-	return ta->priority > tb->priority;
-}
-
 /* Sets the current thread's priority to NEW_PRIORITY.
 	현재 스레드의 우선순위를 새 우선순위로 설정 , 현재 스레드가 더 이상 가장 높은 우선 순위를 갖지 않으면 yield*/
 void
@@ -421,8 +401,6 @@ thread_set_priority (int new_priority) {
 	struct thread *head_thread = list_entry(list_begin(&ready_list), struct thread, elem);
 	if(thread_current()->priority < head_thread->priority)	
 		thread_yield(); 
-	else	
-		list_sort(&ready_list, cmp_priority, NULL);
 
 }
 
@@ -517,12 +495,13 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (name != NULL);
 
 	memset (t, 0, sizeof *t);
-	t->status = THREAD_BLOCKED;	//대기상태여야 하기 때문 (아직 실행x)
+	t->status = THREAD_BLOCKED;					//대기상태여야 하기 때문 (아직 실행x)
 	strlcpy (t->name, name, sizeof t->name);	//버퍼 오버플로우 방지 , 문자열 복사 함수
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
+	//priotity, donation
 	t->original_priority = priority;
 	list_init(&t->donations);
 }
@@ -658,10 +637,11 @@ static void
 schedule (void) {
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
-	// printf("next %p ", &next);
+	
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
 	ASSERT (is_thread (next));
+
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 
@@ -705,4 +685,28 @@ allocate_tid (void) {
 	lock_release (&tid_lock);	//임계영역 빠져나오기 위해 락 해제
 
 	return tid;
+}
+
+//sleep_list에 들어가는 elem을 tick이 짧은 순서대로 오름차순 정렬
+bool
+sleep_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, elem);
+	struct thread *tb = list_entry(b, struct thread, elem);
+	return ta->wakeup_tick < tb->wakeup_tick;
+}
+
+//우선순위내림차순 정렬
+bool
+cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, elem);
+	struct thread *tb = list_entry(b, struct thread, elem);
+	return ta->priority > tb->priority;
+}
+
+//donations 리스트에 들어가는 d_elem을 priority 기준으로 정렬(내림차순)
+bool
+cmp_donor_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *ta = list_entry(a, struct thread, d_elem);
+	struct thread *tb = list_entry(b, struct thread, d_elem);
+	return ta->priority > tb->priority;
 }
